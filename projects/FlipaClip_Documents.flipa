@@ -1,0 +1,26 @@
+{
+  "project_name": "FlipaClip_Documents",
+  "source_path": "/storage/emulated/0/Documents/FlipaClip Documents",
+  "saved_at": "2026-06-24T12:01:08",
+  "app_version": "10.0",
+  "fps": 24,
+  "crf": 18,
+  "w": 1920,
+  "h": 1080,
+  "resolution_key": "fhd",
+  "grade_key": "anime",
+  "format": "mp4",
+  "ai_enabled": true,
+  "ai_steps": 2,
+  "ai_mode": "hybrid",
+  "ai_cache": true,
+  "render_chunk_size": 50,
+  "motion_blur_enabled": true,
+  "motion_blur_strength": 0.4,
+  "metadata": {
+    "title": "",
+    "artist": "",
+    "comment": "FlipaRender v10"
+  },
+  "audio_enabled": false
+}

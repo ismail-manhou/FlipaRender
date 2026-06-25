@@ -1,0 +1,25 @@
+{
+  "project_name": "frames",
+  "source_path": "/storage/emulated/0/flipa_project/frames",
+  "saved_at": "2026-06-24T18:37:09",
+  "app_version": "10.0",
+  "fps": 24,
+  "crf": 23,
+  "w": 1280,
+  "h": 720,
+  "resolution_key": "hd",
+  "grade_key": "none",
+  "format": "mp4",
+  "ai_enabled": false,
+  "ai_steps": 1,
+  "ai_mode": "smart",
+  "ai_cache": false,
+  "render_chunk_size": 34,
+  "motion_blur_enabled": false,
+  "motion_blur_strength": 0.0,
+  "metadata": {
+    "title": "ismail",
+    "artist": "",
+    "comment": "FlipaRender v10"
+  }
+}

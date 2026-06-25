@@ -1,0 +1,25 @@
+{
+  "project_name": "FlipaClip_Documents",
+  "source_path": "/storage/emulated/0/Documents/FlipaClip Documents",
+  "saved_at": "2026-06-21T15:50:27",
+  "app_version": "10.0",
+  "fps": 24,
+  "crf": 23,
+  "w": 1280,
+  "h": 720,
+  "resolution_key": "hd",
+  "grade_key": "vintage",
+  "format": "mp4",
+  "ai_enabled": true,
+  "ai_steps": 1,
+  "ai_mode": "linear",
+  "ai_cache": false,
+  "render_chunk_size": 5,
+  "motion_blur_enabled": true,
+  "motion_blur_strength": 0.15,
+  "metadata": {
+    "title": "",
+    "artist": "",
+    "comment": "FlipaRender v10"
+  }
+}
