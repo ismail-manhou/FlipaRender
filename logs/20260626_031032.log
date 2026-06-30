@@ -1,0 +1,16 @@
+FlipaRender Log — Session 20260626_031032
+Started: 2026-06-26T03:10:32.070852
+============================================================
+
+[03:10:32] [INFO   ] [main] FlipaRender 10.0 — جلسة جديدة: 20260626_031032
+[03:10:35] [INFO   ] [main] مجلد المشروع: /storage/emulated/0/flipa_project/frames
+[03:11:04] [INFO   ] [main] تم تحميل مشروع محفوظ: frames
+[03:11:05] [INFO   ] [main] تم اكتشاف 26 مشهد
+[03:11:20] [INFO   ] [main] الإعدادات: fps=24 crf=23 res=hd grade=none fmt=mp4 ai=False(smart) chunk=34 blur=False(0.00)
+[03:11:43] [INFO   ] [main] تم حفظ نسخة احتياطية قبل بدء الرندر: frames
+
+--- بدء رندر الدفعة (1 مشهد) ----------------
+[03:11:43] [INFO   ] [main] المرحلة: بدء رندر الدفعة (1 مشهد)
+[03:12:01] [INFO   ] [main] نجح رندر 'PLAN6' → output_videos/PLAN6.mp4
+[03:12:01] [INFO   ] [main] تقرير الرندر النهائي: {'total_frames': 34, 'ai_generated_frames': 0, 'cache_hits': 0, 'scenes_rendered': 1, 'scenes_failed': 0, 'elapsed_seconds': 18.38, 'avg_frame_time_ms': 16493.2}
+[03:12:01] [INFO   ] [main] تم حفظ المشروع تلقائياً: projects/frames.flipa

@@ -224,10 +224,29 @@ def apply_project_to_cfg(data: dict, cfg: dict) -> dict:
     """
     يدمج القيم المحفوظة في *data* داخل *cfg* الحالي (يستبدل الموجود فقط).
     يستخدم نفس مفاتيح _SAVED_KEYS — لا يلمس jobs أو مسارات الملفات الحالية.
+
+    بعد تطبيق resolution_key/grade_key، يُعاد بناء w/h وgrade من config.py
+    اعتماداً على المفتاح وحده — حتى لو حُرِّر ملف .flipa يدوياً وتُرِكت
+    قيم w/h أو grade القديمة غير متطابقة مع المفتاح الجديد، تبقى النتيجة
+    صحيحة دائماً (المفتاح هو مصدر الحقيقة، لا القيم المُشتقة منه).
     """
     for key in _SAVED_KEYS:
         if key in data:
             cfg[key] = data[key]
+
+    # إعادة بناء القيم المُشتقة من المفاتيح — تضمن التطابق دائماً حتى لو
+    # عُدِّل الملف يدوياً وتُركت w/h أو grade قديمة لا تطابق المفتاح الجديد.
+    from config import RESOLUTIONS, GRADES, DEFAULT_RESOLUTION, DEFAULT_GRADE
+
+    res_key = cfg.get("resolution_key", DEFAULT_RESOLUTION)
+    if res_key in RESOLUTIONS:
+        w, h, _ = RESOLUTIONS[res_key]
+        cfg["w"], cfg["h"] = w, h
+
+    grade_key = cfg.get("grade_key", DEFAULT_GRADE)
+    if grade_key in GRADES:
+        cfg["grade"] = GRADES[grade_key]
+
     return cfg
 
 

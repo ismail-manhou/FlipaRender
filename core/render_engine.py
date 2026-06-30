@@ -20,6 +20,7 @@ FlipaRender v10 — Render Engine موحَّد  (core/render_engine.py)
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,9 +35,10 @@ from render.video   import export
 from core.project_file import save_project, project_name_from_path, build_project_data
 from core.audio     import mux_audio
 from core.backup    import find_pending_tmp_dirs, save_backup, clear_backup
+from core.plugins   import discover_video_effects
 from utils.stats    import RenderStats
 from ui.cli import (
-    section, ok, warn, err, progress,
+    section, ok, warn, err_detailed, ProgressBar,
     bold, cyan, dim, yellow,
 )
 
@@ -161,12 +163,31 @@ def run_render(
 
         try:
             frame_t0 = stats.frame_start()
+            # v10: ProgressBar حقيقي بنسبة% + سرعة + ETA. نسجّل scene_start_time
+            # *قبل* استدعاء render_frames (قبل أي عمل فعلي)، ونمرّره لأول
+            # ProgressBar يُنشأ — حتى لو الإنشاء نفسه كسول (lazy، يحدث فقط
+            # عند أول استدعاء فعلي للـ callback بعد معالجة الفريم الأول)،
+            # السرعة المحسوبة تبقى صحيحة لأنها تعتمد على وقت بدء العمل
+            # الحقيقي، لا على وقت إنشاء الشريط نفسه.
+            scene_start_time = time.monotonic()
+            bar_holder: dict = {}
+
+            def _on_progress(c: int, t: int) -> None:
+                bar = bar_holder.get("bar")
+                if bar is None or bar.total != max(t, 1):
+                    bar = ProgressBar(total=t, label="frames", start_time=scene_start_time)
+                    bar_holder["bar"] = bar
+                bar.update(c)
+
             n_frames = render_frames(
                 job["pngs"], cfg, tmp_dir,
-                progress_cb=lambda c, t: progress(c, t),
+                progress_cb=_on_progress,
                 layer_pngs=job.get("layer_pngs"),
                 scene_dir=job["path"],
             )
+            if "bar" in bar_holder:
+                bar_holder["bar"].finish()
+
             # نحسب وقت معالجة المشهد كمتوسط موزّع على فريماته
             stats.total_frames += max(n_frames - 1, 0)  # frame_end أدناه يضيف 1
             stats.frame_end(frame_t0, from_cache=False, ai_generated=cfg.get("ai_enabled", False))
@@ -197,7 +218,7 @@ def run_render(
             log.info(f"نجح رندر '{job['name']}' → {out_file}")
 
         except Exception as exc:
-            err(f"Failed: {exc}")
+            err_detailed(exc, context=f"Scene '{job['name']}'")
             failed += 1
             stats.scene_done(False)
             log.error(f"فشل رندر '{job['name']}'", exc=exc)
@@ -216,10 +237,26 @@ def run_render(
             log.info(f"تم دمج {len(rendered_files)} فيديو → {full_out}")
             final_video = full_out
         except Exception as exc:
-            err(f"Merge failed: {exc}")
+            err_detailed(exc, context="Video merge")
             log.error("فشل دمج الفيديوهات", exc=exc)
     elif fmt == "mp4" and len(rendered_files) == 1:
         final_video = rendered_files[0]
+
+    # ── v10: Plugins — معالجات فيديو (VideoEffectPlugin) على الفيديو النهائي،
+    # بعد الدمج الكامل وقبل دمج الصوت — تماماً مثل filmgrain.py
+    active_video_effects = cfg.get("active_video_effects") or []
+    if active_video_effects and fmt == "mp4" and final_video and final_video.exists():
+        for plugin in active_video_effects:
+            try:
+                effect_out = out_base / f"{final_video.stem}_fx.mp4"
+                plugin.apply(final_video, effect_out, **plugin.params)
+                final_video.unlink(missing_ok=True)
+                effect_out.rename(final_video)
+                ok(f"Video effect applied: {plugin.name}")
+                log.info(f"تم تطبيق مؤثر الإضافة '{plugin.name}' على الفيديو النهائي")
+            except Exception as exc:
+                warn(f"Plugin '{plugin.name}' failed and was skipped: {exc}")
+                log.warning(f"فشل مؤثر الإضافة '{plugin.name}' وتم تجاوزه: {exc}")
 
     # ── v10: Audio Support — دمج الصوت على الفيديو النهائي (full_video_only فقط) ─
     # لو sync_mode = per_scene، كل مشهد منفرد يحتوي الصوت مسبقاً من الخطوة أعلاه،

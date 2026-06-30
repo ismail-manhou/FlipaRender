@@ -47,11 +47,16 @@ from core.audio import (
 from core.backup import (
     has_backup, load_backup_info, load_backup_project_data, restore_tmp_dirs,
 )
+from core.export_presets import (
+    list_all_presets, get_preset_data, apply_preset_to_cfg,
+    save_custom_preset,
+)
+from core.plugins import discover_image_filters, discover_video_effects
 from core.render_engine import run_render
 from utils.memory import auto_chunk_size, detect_ram_profile
 from utils.logger  import new_session, get_logger, cleanup_old_logs, current_log_path
 from ui.cli import (
-    banner, section, ok, warn, err,
+    banner, section, ok, warn, err, err_detailed,
     ask, ask_int, ask_choice,
     bold, cyan, dim, yellow,
 )
@@ -150,6 +155,68 @@ def _pick_format() -> str:
     return fmt
 
 
+# ── v10: Export Presets ───────────────────────────────────────────────────────
+
+def _pick_export_preset() -> dict | None:
+    """
+    يعرض قائمة البريسيتس الجاهزة (YouTube/TikTok/Instagram/Telegram/4K)
+    بالإضافة لأي presets مخصصة محفوظة، ويسأل المستخدم إن أراد استخدام
+    أحدها مباشرة — في هذه الحالة تُطبَّق إعداداته (resolution/fps/crf/
+    format) فوراً وتُتخطّى أسئلة هذه الإعدادات بالكامل.
+
+    يعيد dict بيانات الـ preset المختار، أو None لو رفض المستخدم (في هذه
+    الحالة يستمر التدفق العادي بالأسئلة اليدوية كما كان).
+    """
+    presets = list_all_presets()
+    if not presets:
+        return None
+
+    section("Export Presets")
+    _hint("Ready-made settings for popular platforms — applied instantly, no extra questions.")
+    print()
+
+    for i, p in enumerate(presets, 1):
+        tag = dim("[built-in]") if p.builtin else dim("[custom]")
+        print(f"  {cyan(f'{i}.')}  {bold(p.name)}  {tag}")
+        if p.description:
+            print(f"      {dim(p.description)}")
+    print()
+
+    use_preset = ask_choice("Use one of these presets?", ["yes", "no"], "no") == "yes"
+    if not use_preset:
+        return None
+
+    idx = ask_int("Choose preset number", 1, min_value=1, max_value=len(presets))
+    chosen = presets[idx - 1]
+    data = get_preset_data(chosen.key)
+
+    if data is None:
+        warn(f"Preset '{chosen.name}' could not be loaded — falling back to manual settings.")
+        return None
+
+    summary = f"res={data.get('resolution_key')}  fps={data.get('fps')}  crf={data.get('crf')}  fmt={data.get('format')}"
+    ok(f"Preset applied: {chosen.name}  ({summary})")
+    return data
+
+
+def _offer_save_as_preset(cfg: dict) -> None:
+    """
+    بعد اكتمال الإعدادات اليدوية، يسأل المستخدم إن أراد حفظها كـ preset
+    مخصص لإعادة استخدامها لاحقاً على مشاريع أخرى دون تكرار الأسئلة.
+    """
+    section("Save as Custom Preset")
+    save_it = ask_choice("Save these export settings as a reusable preset?", ["no", "yes"], "no") == "yes"
+    if not save_it:
+        return
+
+    name = ask("Preset name", "My Preset")
+    try:
+        path = save_custom_preset(name, cfg)
+        ok(f"Preset saved: {path}")
+    except OSError as exc:
+        warn(f"Could not save preset: {exc}")
+
+
 # ── v10: Memory Optimizer ───────────────────────────────────────────────────────
 
 def _pick_chunk_size(jobs: list[dict]) -> int:
@@ -212,6 +279,95 @@ def _pick_motion_blur(fps: int) -> tuple[bool, float]:
 
     ok(f"Motion blur: enabled  (strength={strength:.2f})")
     return True, strength
+
+
+# ── v10: Plugins ──────────────────────────────────────────────────────────────
+
+def _pick_plugins() -> tuple[list, list]:
+    """
+    يكتشف كل الإضافات الموجودة في plugins/ (فلاتر صورة + معالجات فيديو)
+    ويسأل المستخدم أيها يريد تفعيلها لهذا الرندر، مع إمكانية تعديل
+    المعاملات (params) لكل إضافة مُفعَّلة.
+
+    يعيد (active_image_filters, active_video_effects) — قوائم instances
+    جاهزة للاستخدام المباشر، فاضية لو لا توجد إضافات أو رفضها المستخدم.
+    """
+    filters, filter_errors = discover_image_filters()
+    effects, effect_errors = discover_video_effects()
+
+    # كل ملف تالف يُكتشَف من كلا الاستدعاءين (الصورة والفيديو) لأن كلاهما
+    # يفحص كل الملفات بحثاً عن أي نوع كلاس — نزيل التكرار قبل العرض.
+    seen_paths = set()
+    unique_errors = []
+    for path, msg in filter_errors + effect_errors:
+        if path not in seen_paths:
+            seen_paths.add(path)
+            unique_errors.append((path, msg))
+
+    for path, msg in unique_errors:
+        warn(f"Plugin failed to load: {path.name}  ({msg})")
+
+    if not filters and not effects:
+        return [], []
+
+    section("Plugins")
+    _hint("Extra filters and effects found in plugins/ — optional, none applied by default.")
+    print()
+
+    all_plugins = [("filter", p) for p in filters] + [("effect", p) for p in effects]
+    for i, (kind, p) in enumerate(all_plugins, 1):
+        tag = dim("[image filter]") if kind == "filter" else dim("[video effect]")
+        print(f"  {cyan(f'{i}.')}  {bold(p.name)}  {tag}")
+        if p.description:
+            print(f"      {dim(p.description)}")
+    print()
+
+    use_plugins = ask_choice("Apply any plugins to this render?", ["no", "yes"], "no") == "yes"
+    if not use_plugins:
+        return [], []
+
+    _hint("Enter numbers separated by commas (e.g. 1,3), or leave blank for none.")
+    raw = ask("Plugin numbers", "")
+    if not raw.strip():
+        return [], []
+
+    chosen_image_filters: list = []
+    chosen_video_effects: list = []
+
+    for token in raw.split(","):
+        token = token.strip()
+        if not token.isdigit():
+            continue
+        idx = int(token)
+        if not (1 <= idx <= len(all_plugins)):
+            warn(f"Skipping invalid plugin number: {idx}")
+            continue
+        kind, plugin = all_plugins[idx - 1]
+
+        # نسأل عن تعديل المعاملات الافتراضية (اختياري، Enter للقبول كما هي)
+        if plugin.params:
+            print()
+            print(f"  {bold(plugin.name)}  {dim('— default parameters: ' + str(plugin.params))}")
+            customize = ask_choice(f"Customize '{plugin.name}' parameters?", ["no", "yes"], "no") == "yes"
+            if customize:
+                for key, default_val in plugin.params.items():
+                    raw_val = ask(f"  {key}", str(default_val))
+                    try:
+                        # نحافظ على نوع القيمة الافتراضية (float/int/str)
+                        plugin.params[key] = type(default_val)(raw_val)
+                    except (ValueError, TypeError):
+                        warn(f"Invalid value for '{key}' — keeping default ({default_val}).")
+
+        if kind == "filter":
+            chosen_image_filters.append(plugin)
+        else:
+            chosen_video_effects.append(plugin)
+
+    if chosen_image_filters or chosen_video_effects:
+        names = [p.name for p in chosen_image_filters + chosen_video_effects]
+        ok(f"Plugins enabled: {', '.join(names)}")
+
+    return chosen_image_filters, chosen_video_effects
 
 
 # ── v10: Audio Support ────────────────────────────────────────────────────────
@@ -663,7 +819,7 @@ def _pick_saved_project(root_path: Path) -> tuple[dict | None, bool]:
     try:
         data = load_project(match.name)
     except (FileNotFoundError, ValueError) as exc:
-        err(f"Could not load project: {exc}")
+        err_detailed(exc, context="Loading saved project")
         return None, False
 
     ok(f"Project '{match.name}' loaded  ({data.get('saved_at', '—')})")
@@ -839,26 +995,51 @@ def main() -> None:
         saved_fps = loaded_project.get("fps") if loaded_project else None
         saved_crf = loaded_project.get("crf", DEFAULT_CRF) if loaded_project else DEFAULT_CRF
 
-        fps   = _pick_fps(jobs, saved_fps=saved_fps)   # v10: تمرير jobs لتفعيل الاقتراح الذكي
-        crf   = _pick_crf(saved_crf)
-        res   = _pick_resolution(loaded_project.get("resolution_key", DEFAULT_RESOLUTION) if loaded_project else DEFAULT_RESOLUTION)
-        grade, grade_key = _pick_grade(loaded_project.get("grade_key", DEFAULT_GRADE) if loaded_project else DEFAULT_GRADE)
-        fmt   = _pick_format()
+        # v10: Export Presets — preset جاهز يطبّق resolution/fps/crf/format فوراً
+        preset_data = _pick_export_preset()
+
+        if preset_data:
+            res_key = preset_data.get("resolution_key", DEFAULT_RESOLUTION)
+            w, h, _ = RESOLUTIONS.get(res_key, RESOLUTIONS[DEFAULT_RESOLUTION])
+            res = {"w": preset_data.get("w", w), "h": preset_data.get("h", h),
+                   "resolution_key": res_key}
+            fps = preset_data.get("fps", DEFAULT_FPS)
+            crf = preset_data.get("crf", DEFAULT_CRF)
+            fmt = preset_data.get("format", DEFAULT_OUTPUT_FORMAT)
+            grade, grade_key = _pick_grade(DEFAULT_GRADE)
+        else:
+            fps   = _pick_fps(jobs, saved_fps=saved_fps)   # v10: تمرير jobs لتفعيل الاقتراح الذكي
+            crf   = _pick_crf(saved_crf)
+            res   = _pick_resolution(loaded_project.get("resolution_key", DEFAULT_RESOLUTION) if loaded_project else DEFAULT_RESOLUTION)
+            grade, grade_key = _pick_grade(loaded_project.get("grade_key", DEFAULT_GRADE) if loaded_project else DEFAULT_GRADE)
+            fmt   = _pick_format()
 
         # v9: metadata (MP4 فقط)
         metadata = {}
         if fmt == "mp4":
             metadata = _pick_metadata()
 
-        # v9: GIF options
+        # v9: GIF options — preset قد يحدد قيم GIF جاهزة (مثل Telegram GIF)
         gif_opts = {}
         if fmt == "gif":
-            gif_opts = _pick_gif_options()
+            if preset_data and "gif_colors" in preset_data:
+                gif_opts = {
+                    "gif_colors":    preset_data.get("gif_colors", DEFAULT_GIF_COLORS),
+                    "gif_max_width": preset_data.get("gif_max_width", DEFAULT_GIF_MAX_WIDTH),
+                    "gif_loop":      preset_data.get("gif_loop", 0),
+                }
+                ok(f"GIF options (from preset): {gif_opts['gif_colors']} colors, "
+                   f"max {gif_opts['gif_max_width']}px, loop={gif_opts['gif_loop']}")
+            else:
+                gif_opts = _pick_gif_options()
 
         ai_enabled, ai_steps, ai_mode, ai_cache = _pick_ai(jobs, {})
 
         # v10: Motion Blur
         blur_enabled, blur_strength = _pick_motion_blur(fps)
+
+        # v10: Plugins — فلاتر صورة ومعالجات فيديو اختيارية
+        active_image_filters, active_video_effects = _pick_plugins()
 
         # v10: Memory Optimizer — حجم دفعة الرندر
         chunk_size = _pick_chunk_size(jobs)
@@ -879,7 +1060,15 @@ def main() -> None:
             "render_chunk_size":    chunk_size,
             "motion_blur_enabled":  blur_enabled,
             "motion_blur_strength": blur_strength,
+            "active_image_filters": active_image_filters,
+            "active_video_effects": active_video_effects,
         }
+
+        # v10: Export Presets — عرض حفظ الإعدادات اليدوية كـ preset مخصص
+        # (فقط لو لم تُطبَّق من preset جاهز مسبقاً — لا فائدة من حفظ نسخة
+        # مكررة من preset جاهز موجود أصلاً)
+        if not preset_data:
+            _offer_save_as_preset(cfg)
 
     # ── v10: Audio Support — يُسأل خارج quick/manual، فقط لو fmt = mp4 ─────────
     # (الصوت في GIF غير معتاد ولا يدعمه ffmpeg لصيغة GIF نفسها)

@@ -1,0 +1,26 @@
+FlipaRender Log — Session 20260630_233502
+Started: 2026-06-30T23:35:02.466127
+============================================================
+
+[23:35:02] [INFO   ] [main] FlipaRender 10.0 — جلسة جديدة: 20260630_233502
+[23:35:09] [INFO   ] [main] مجلد المشروع: /storage/emulated/0/flipa_project/frames
+[23:35:19] [INFO   ] [main] تم اكتشاف 26 مشهد
+[23:38:05] [INFO   ] [main] الإعدادات: fps=30 crf=18 res=fhd grade=anime fmt=mp4 ai=True(hybrid) chunk=19 blur=True(0.15)
+[23:38:32] [INFO   ] [main] تم حفظ نسخة احتياطية قبل بدء الرندر: frames
+
+--- بدء رندر الدفعة (1 مشهد) ----------------
+[23:38:32] [INFO   ] [main] المرحلة: بدء رندر الدفعة (1 مشهد)
+[23:38:32] [INFO   ] [render] فلاتر إضافات مفعّلة: Watercolor
+
+--- بدء رندر مشهد (_tmp_fliparender_PLAN8) --
+[23:38:32] [INFO   ] [render] المرحلة: بدء رندر مشهد (_tmp_fliparender_PLAN8)
+[23:38:32] [INFO   ] [render] Motion Blur مفعّل — strength=0.15
+[23:38:32] [INFO   ] [render] Exposure Sheet: 8 فريم بعد التوسعة (source=auto (hold=1))
+
+--- AI In-betweening ------------------------
+[23:38:32] [INFO   ] [render] المرحلة: AI In-betweening
+[23:41:07] [INFO   ] [render] AI: توليد فريمات وسيطة اكتمل — وضع hybrid
+[23:42:04] [INFO   ] [render] اكتمل المشهد المركّب: 55 فريم
+[23:42:10] [INFO   ] [main] نجح رندر 'PLAN8' → output_videos/PLAN8.mp4
+[23:42:12] [INFO   ] [main] تقرير الرندر النهائي: {'total_frames': 55, 'ai_generated_frames': 1, 'cache_hits': 0, 'scenes_rendered': 1, 'scenes_failed': 0, 'elapsed_seconds': 220.21, 'avg_frame_time_ms': 212507.5}
+[23:42:12] [INFO   ] [main] تم حفظ المشروع تلقائياً: projects/frames.flipa

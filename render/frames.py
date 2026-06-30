@@ -125,25 +125,45 @@ def _apply_xsheet(
 
 # ── v10: معالجة فريم واحد (يُستخدم داخل كل دفعة) ────────────────────────────────
 
+def _apply_image_filters(img: Image.Image, image_filters: list) -> Image.Image:
+    """
+    يُطبّق قائمة ImageFilterPlugin (إن وُجدت) بالترتيب على *img*، بعد
+    Color Grading وMotion Blur الأصليين مباشرة — آخر معالجة قبل الحفظ.
+    خطأ في إضافة واحدة لا يوقف الرندر؛ يُسجَّل تحذيراً ويُكمل بالصورة كما هي.
+    """
+    if not image_filters:
+        return img
+    for plugin in image_filters:
+        try:
+            img = plugin.apply(img, **plugin.params)
+        except Exception as exc:
+            log.warning(f"فلتر الإضافة '{plugin.name}' فشل وتم تجاوزه: {exc}")
+    return img
+
+
 def _render_single_frame(
     path: str, out_path: Path, size: tuple[int, int], grade: dict,
     blur: MotionBlurState | None = None,
+    image_filters: list | None = None,
 ) -> None:
     img = Image.open(path).resize(size, Image.LANCZOS)
     img = apply_grade(img, grade)
     if blur is not None:
         img = blur.apply(img)
+    img = _apply_image_filters(img, image_filters or [])
     img.convert("RGB").save(out_path)
 
 
 def _render_single_composite(
     frame_paths: list[str], out_path: Path, size: tuple[int, int], grade: dict,
     blur: MotionBlurState | None = None,
+    image_filters: list | None = None,
 ) -> None:
     img = _composite_layers(frame_paths, size)
     img = apply_grade(img, grade)
     if blur is not None:
         img = blur.apply(img)
+    img = _apply_image_filters(img, image_filters or [])
     img.convert("RGB").save(out_path)
 
 
@@ -193,6 +213,11 @@ def render_frames(
         strength=float(cfg.get("motion_blur_strength", 0.0)),
         enabled=bool(cfg.get("motion_blur_enabled", False)),
     )
+
+    # v10: Plugins — فلاتر صورة مفعّلة لهذا الرندر (بعد grading وblur، قبل الحفظ)
+    image_filters = cfg.get("active_image_filters") or []
+    if image_filters:
+        log.info(f"فلاتر إضافات مفعّلة: {', '.join(p.name for p in image_filters)}")
 
     log.stage(f"بدء رندر مشهد ({out_dir.name})")
     if blur.enabled:
@@ -253,7 +278,8 @@ def render_frames(
                     frame_paths = [layer[min(i, len(layer) - 1)] for layer in layer_pngs]
                     out_path = out_dir / f"frame_{i:05d}.png"
                     if not out_path.exists():
-                        _render_single_composite(frame_paths, out_path, (w, h), grade, blur=blur)
+                        _render_single_composite(frame_paths, out_path, (w, h), grade,
+                                                  blur=blur, image_filters=image_filters)
                     if progress_cb:
                         progress_cb(i + 1, total)
 
@@ -278,7 +304,8 @@ def render_frames(
                 for i, path in chunk:
                     out_path = out_dir / f"frame_{i:05d}.png"
                     if not out_path.exists():
-                        _render_single_frame(path, out_path, (w, h), grade, blur=blur)
+                        _render_single_frame(path, out_path, (w, h), grade,
+                                              blur=blur, image_filters=image_filters)
                     if progress_cb:
                         progress_cb(i + 1, total)
 
